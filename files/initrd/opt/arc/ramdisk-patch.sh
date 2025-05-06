@@ -71,7 +71,7 @@ writeConfigKey "smallnum" "${SMALLNUM}" "${USER_CONFIG_FILE}"
 
 # Read model data
 KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${P_FILE}")"
-[ "${PLATFORM}" = "epyc7002" ] && KVERP="${PRODUCTVER}-${KVER}" || KVERP="${KVER}"
+is_in_array "${PLATFORM}" "${KVER5L[@]}" && KVERP="${PRODUCTVER}-${KVER}" || KVERP="${KVER}"
 
 # Sanity check
 if [ -z "${PLATFORM}" ] || [ -z "${KVER}" ]; then
@@ -148,7 +148,7 @@ rm -f "${TMP_PATH}/rp.txt"
 installModules "${PLATFORM}" "${KVERP}" "${!MODULES[@]}" || exit 1
 
 # Copying fake modprobe
-[ $(echo "${KVER:-4}" | cut -d'.' -f1) -lt 5 ] && cp -f "${PATCH_PATH}/iosched-trampoline.sh" "${RAMDISK_PATH}/usr/sbin/modprobe"
+[ "${KVER:0:1}" = "4" ] && cp -f "${PATCH_PATH}/iosched-trampoline.sh" "${RAMDISK_PATH}/usr/sbin/modprobe"
 # Copying LKM to /usr/lib/modules
 gzip -dc "${LKMS_PATH}/rp-${PLATFORM}-${KVERP}-${LKM}.ko.gz" >"${RAMDISK_PATH}/usr/lib/modules/rp.ko" 2>"${LOG_FILE}" || exit 1
 
@@ -172,8 +172,8 @@ mkdir -p "${RAMDISK_PATH}/addons"
 } >"${RAMDISK_PATH}/addons/addons.sh"
 chmod +x "${RAMDISK_PATH}/addons/addons.sh"
 
-# Add redpill Addon if Platform is epyc7002
-if [ "${PLATFORM}" = "epyc7002" ]; then
+# Add redpill Addon if Kernel is 5.x
+if [ "${KVER:0:1}" = "5" ]; then
   installAddon "redpill" "${PLATFORM}" || exit 1
   echo "/addons/redpill.sh \${1}" >>"${RAMDISK_PATH}/addons/addons.sh" 2>>"${LOG_FILE}" || exit 1
 fi
@@ -182,8 +182,6 @@ fi
 for ADDON in "revert" "misc" "eudev" "disks" "localrss" "notify" "wol" "mountloader"; do
   PARAMS=""
   if [ "${ADDON}" = "disks" ]; then
-    HDDSORT="$(readConfigKey "hddsort" "${USER_CONFIG_FILE}")"
-    PARAMS="${HDDSORT}"
     [ -f "${USER_UP_PATH}/model.dts" ] && cp -f "${USER_UP_PATH}/model.dts" "${RAMDISK_PATH}/addons/model.dts"
     [ -f "${USER_UP_PATH}/${MODEL}.dts" ] && cp -f "${USER_UP_PATH}/${MODEL}.dts" "${RAMDISK_PATH}/addons/model.dts"
   fi
@@ -238,10 +236,8 @@ for N in $(seq 0 7); do
   echo -e "DEVICE=eth${N}\nBOOTPROTO=dhcp\nONBOOT=yes\nIPV6INIT=dhcp\nIPV6_ACCEPT_RA=1" >"${RAMDISK_PATH}/etc/sysconfig/network-scripts/ifcfg-eth${N}"
 done
 
-# SA6400 patches
-if [ "$(echo "${KVER:-4}" | cut -d'.' -f1)" -lt 5 ]; then
-   :
- else
+# Linux 5.x patches
+if [ "${KVER:0:1}" = "5" ]; then
   echo -e ">>> apply Linux 5.x Fixes"
   sed -i 's#/dev/console#/var/log/lrc#g' ${RAMDISK_PATH}/usr/bin/busybox
   sed -i '/^echo "START/a \\nmknod -m 0666 /dev/console c 1 3' ${RAMDISK_PATH}/linuxrc.syno
@@ -252,12 +248,6 @@ if [ "${PLATFORM}" = "broadwellntbap" ]; then
   echo -e ">>> apply Broadwellntbap Fixes"
   sed -i 's/IsUCOrXA="yes"/XIsUCOrXA="yes"/g; s/IsUCOrXA=yes/XIsUCOrXA=yes/g' ${RAMDISK_PATH}/usr/syno/share/environments.sh
 fi
-
-# Call user patch scripts
-for F in $(ls -1 ${USER_UP_PATH}/*.sh 2>/dev/null); do
-  echo "Calling ${F}" >"${LOG_FILE}"
-  . "${F}" >>"${LOG_FILE}" 2>&1 || exit 1
-done
 
 # Reassembly ramdisk
 if [ "${RD_COMPRESSED}" = "true" ]; then

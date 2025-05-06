@@ -4,8 +4,8 @@
 # Overlay Init Section
 [[ -z "${ARC_PATH}" || ! -d "${ARC_PATH}/include" ]] && ARC_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 
-. "${ARC_PATH}/include/functions.sh"
 . "${ARC_PATH}/arc-functions.sh"
+. "${ARC_PATH}/include/functions.sh"
 . "${ARC_PATH}/include/addons.sh"
 . "${ARC_PATH}/include/modules.sh"
 . "${ARC_PATH}/include/update.sh"
@@ -67,7 +67,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
     if [ "${CONFDONE}" = "true" ]; then
       if [ -f "${MOD_ZIMAGE_FILE}" ] && [ -f "${MOD_RDGZ_FILE}" ]; then
         write_menu "2" "Rebuild Loader"
-        write_menu "3" "Rebuild Loader with clean Image"
+        write_menu "3" "Rebuild Loader (clean)*"
       else
         write_menu "2" "Build Loader"
       fi
@@ -89,7 +89,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
         write_menu "e" "Version"
         write_menu "p" "SN/Mac Options"
     
-        if [ "${DT}" = "false" ] && [ ${SATACONTROLLER} -gt 0 ]; then
+        if [ "${DT}" = "false" ] && [ "${SATACONTROLLER}" -gt 0 ]; then
           write_menu "S" "Sata PortMap"
         fi
 
@@ -97,17 +97,16 @@ elif [ "${ARC_MODE}" = "config" ]; then
           write_menu "o" "DTS Map Options"
         fi
 
-        for addon in "cpufreqscaling" "storagepanel" "sequentialio"; do
+        for addon in "cpufreqscaling" "storagepanel"; do
           if readConfigMap "addons" "${USER_CONFIG_FILE}" | grep -q "${addon}"; then
             case "${addon}" in
               "cpufreqscaling") write_menu "g" "Scaling Governor" ;;
               "storagepanel") write_menu "P" "StoragePanel" ;;
-              "sequentialio") write_menu "Q" "SequentialIO" ;;
             esac
           fi
         done
 
-        if [ "${PLATFORM}" = "epyc7002" ]; then
+        if [ "${PLATFORM}" = "epyc7002" ] && [ "${PRODUCTVER}" = "7.2" ]; then
           write_menu_value "K" "Kernel" "${KERNEL}"
         fi
 
@@ -206,13 +205,12 @@ elif [ "${ARC_MODE}" = "config" ]; then
             ;;
           b) addonMenu; NEXT="b" ;;
           d) modulesMenu; NEXT="d" ;;
-          e) ONLYVERSION="true" && arcVersion; NEXT="e" ;;
+          e) ONLYVERSION="true" && writeConfigKey "productver" "" "${USER_CONFIG_FILE}" && arcVersion; NEXT="e" ;;
           p) ONLYPATCH="true" && checkHardwareID && arcPatch; NEXT="p" ;;
           S) storageMenu; NEXT="S" ;;
           o) dtsMenu; NEXT="o" ;;
           g) governorMenu; NEXT="g" ;;
           P) storagepanelMenu; NEXT="P" ;;
-          Q) sequentialIOMenu; NEXT="Q" ;;
           # Boot Section
           6) [ "${BOOTOPTS}" = "true" ] && BOOTOPTS='false' || BOOTOPTS='true'
             NEXT="6"
@@ -269,7 +267,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
             PLATFORM="$(readConfigKey "platform" "${USER_CONFIG_FILE}")"
             PRODUCTVER="$(readConfigKey "productver" "${USER_CONFIG_FILE}")"
             KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${P_FILE}")"
-            [ "${PLATFORM}" = "epyc7002" ] && KVERP="${PRODUCTVER}-${KVER}" || KVERP="${KVER}"
+            is_in_array "${PLATFORM}" "${KVER5L[@]}" && KVERP="${PRODUCTVER}-${KVER}" || KVERP="${KVER}"
             if [ -n "${PLATFORM}" ] && [ -n "${KVERP}" ]; then
               writeConfigKey "modules" "{}" "${USER_CONFIG_FILE}"
               mergeConfigModules "$(getAllModules "${PLATFORM}" "${KVERP}" | awk '{print $1}')" "${USER_CONFIG_FILE}"
