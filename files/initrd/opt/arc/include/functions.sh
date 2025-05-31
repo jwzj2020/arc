@@ -5,11 +5,6 @@
 . "${ARC_PATH}/include/addons.sh"
 . "${ARC_PATH}/include/modules.sh"
 
-KVER5L=(v1000nk epyc7002)
-IGPU1L=(apollolake geminilake)
-IGPU2L=(v1000nk epyc7002)
-NVMECACHE=(DS719+ DS918+ DS1019+ DS1621xs+ RS1619xs+)
-
 ###############################################################################
 # Check loader disk
 function checkBootLoader() {
@@ -591,7 +586,7 @@ function systemCheck () {
   [ -z "${LOADER_DISK}" ] && die "Loader Disk not found!"
   # Check for Hypervisor
   MEV="$(virt-what 2>/dev/null | head -1)"
-  MACHINE="${MEV:-physical}"
+  [ -z "${MEV}" ] && MEV="physical"
   # Check for AES Support
   if grep -q "^flags.*aes.*" /proc/cpuinfo; then
     AESSYS="true"
@@ -605,13 +600,14 @@ function systemCheck () {
     CPUFREQ="false"
   fi
   # Check for Arc Patch
-  arc_mode
   ARC_CONF="$(readConfigKey "${MODEL:-SA6400}.serial" "${S_FILE}")"
   [ -z "${ARC_CONF}" ] && writeConfigKey "arc.patch" "false" "${USER_CONFIG_FILE}"
+  [ ! -f "${D_FILE}" ] && updateOffline || true
+  KEYMAP="$(readConfigKey "keymap" "${USER_CONFIG_FILE}")"
+  arc_mode
   getnetinfo
   getdiskinfo
   getmap
-  [ ! -f "${D_FILE}" ] && updateOffline || true
 }
 
 ###############################################################################
@@ -699,6 +695,7 @@ function readData() {
     PLATFORM="$(readConfigKey "platform" "${USER_CONFIG_FILE}")"
     DT="$(readConfigKey "platforms.${PLATFORM}.dt" "${P_FILE}")"
     PRODUCTVER="$(readConfigKey "productver" "${USER_CONFIG_FILE}")"
+    DSMVER="$(readConfigKey "dsmver" "${USER_CONFIG_FILE}")"
     KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver" "${P_FILE}")"
   fi
 
@@ -750,11 +747,11 @@ function write_menu_value() {
 ################################################################################
 # Function to check if a value exists in an array
 function is_in_array() {
-  local value="$1"
+  local V="$1"
   shift
-  local array=("$@")
-  for item in "${array[@]}"; do
-    if [[ "$item" == "$value" ]]; then
+  local A=("$@")
+  for I in "${A[@]}"; do
+    if [[ "$I" == "$V" ]]; then
       return 0
     fi
   done

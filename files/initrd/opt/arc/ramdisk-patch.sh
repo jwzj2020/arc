@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# shellcheck disable=SC2034
+
 [[ -z "${ARC_PATH}" || ! -d "${ARC_PATH}/include" ]] && ARC_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 
 . "${ARC_PATH}/include/functions.sh"
@@ -25,7 +27,6 @@ mkdir -p "${RAMDISK_PATH}"
 # Read Model Data
 PLATFORM="$(readConfigKey "platform" "${USER_CONFIG_FILE}")"
 MODEL="$(readConfigKey "model" "${USER_CONFIG_FILE}")"
-MODELID="$(readConfigKey "modelid" "${USER_CONFIG_FILE}")"
 LKM="$(readConfigKey "lkm" "${USER_CONFIG_FILE}")"
 SN="$(readConfigKey "sn" "${USER_CONFIG_FILE}")"
 LAYOUT="$(readConfigKey "layout" "${USER_CONFIG_FILE}")"
@@ -42,20 +43,12 @@ PAT_HASH="$(readConfigKey "pathash" "${USER_CONFIG_FILE}")"
 # Check if DSM Version changed
 . "${RAMDISK_PATH}/etc/VERSION"
 
-if [[ -n "${BUILDNUM}" && ("${PRODUCTVER}" != "${majorversion}.${minorversion}" || "${BUILDNUM}" != "${buildnumber}" || "${SMALLNUM}" != "${smallfixnumber}") ]]; then
+if [[ -n "${BUILDNUM}" && ("${PRODUCTVER}" != "${majorversion}.${minorversion}" || "${BUILDNUM}" != "${buildnumber}") ]]; then
   OLDVER="${PRODUCTVER}(${BUILDNUM}$([[ ${SMALLNUM:-0} -ne 0 ]] && echo "u${SMALLNUM}"))"
   NEWVER="${majorversion}.${minorversion}(${buildnumber}$([[ ${smallfixnumber:-0} -ne 0 ]] && echo "u${smallfixnumber}"))"
   PAT_URL=""
   PAT_HASH=""
   echo -e "Version changed from ${OLDVER} to ${NEWVER}"
-fi
-
-# Re-read PAT_URL and PAT_HASH if they are empty or commented out
-if [[ -z "${PAT_URL}" || "${PAT_URL:0:1}" == "#" ]]; then
-  PAT_URL="$(readConfigKey "${PLATFORM}.\"${MODEL}\".\"${majorversion}.${minorversion}\".url" "${D_FILE}")"
-fi
-if [[ -z "${PAT_HASH}" || "${PAT_HASH:0:1}" == "#" ]]; then
-  PAT_HASH="$(readConfigKey "${PLATFORM}.\"${MODEL}\".\"${majorversion}.${minorversion}\".hash" "${D_FILE}")"
 fi
 
 PRODUCTVER="${majorversion}.${minorversion}"
@@ -89,6 +82,7 @@ while IFS=': ' read -r KEY VALUE; do
   [ -n "${KEY}" ] && MODULES["${KEY}"]="${VALUE}"
 done < <(readConfigMap "modules" "${USER_CONFIG_FILE}")
 
+SYNOINFO["SN"]="${SN}"
 while IFS=': ' read -r KEY VALUE; do
   [ -n "${KEY}" ] && SYNOINFO["${KEY}"]="${VALUE}"
 done < <(readConfigMap "synoinfo" "${USER_CONFIG_FILE}")
@@ -127,8 +121,7 @@ echo "Create addons.sh" >>"${LOG_FILE}"
   echo "export LOADERBUILD=\"${ARC_BUILD}\""
   echo "export PLATFORM=\"${PLATFORM}\""
   echo "export MODEL=\"${MODEL}\""
-  echo "export MODELID=\"${MODELID}\""
-  echo "export PRODUCTVER=\"${PRODUCTVER}\""
+  echo "export PRODUCTVERL=\"${PRODUCTVERL}\""
   echo "export MLINK=\"${PAT_URL}\""
   echo "export MCHECKSUM=\"${PAT_HASH}\""
   echo "export LAYOUT=\"${LAYOUT:-qwerty}\""
@@ -138,23 +131,22 @@ chmod +x "${RAMDISK_PATH}/addons/addons.sh"
 
 # System Addons
 for ADDON in "redpill" "revert" "misc" "eudev" "disks" "localrss" "notify" "wol" "mountloader"; do
-  PARAMS=""
   if [ "${ADDON}" = "disks" ]; then
     [ -f "${USER_UP_PATH}/model.dts" ] && cp -f "${USER_UP_PATH}/model.dts" "${RAMDISK_PATH}/addons/model.dts"
     [ -f "${USER_UP_PATH}/${MODEL}.dts" ] && cp -f "${USER_UP_PATH}/${MODEL}.dts" "${RAMDISK_PATH}/addons/model.dts"
   fi
-  installAddon "${ADDON}" "${PLATFORM}" || exit 1
-  echo "/addons/${ADDON}.sh \${1} ${PARAMS}" >>"${RAMDISK_PATH}/addons/addons.sh" 2>>"${LOG_FILE}" || exit 1
+  installAddon "${ADDON}" "${PLATFORM}" "${KVERP}" || exit 1
+  echo "/addons/${ADDON}.sh \${1}" >>"${RAMDISK_PATH}/addons/addons.sh" 2>>"${LOG_FILE}" || exit 1
 done
 
 # User Addons
 for ADDON in "${!ADDONS[@]}"; do
   PARAMS="${ADDONS[${ADDON}]}"
-  installAddon "${ADDON}" "${PLATFORM}" || echo "Addon ${ADDON} not found"
+  installAddon "${ADDON}" "${PLATFORM}" "${KVERP}" || echo "Addon ${ADDON} not found"
   echo "/addons/${ADDON}.sh \${1} ${PARAMS}" >>"${RAMDISK_PATH}/addons/addons.sh" 2>>"${LOG_FILE}" || exit 1
 done
 
-# Extract ck modules to ramdisk
+# Extract modules to ramdisk
 installModules "${PLATFORM}" "${KVERP}" "${!MODULES[@]}" || exit 1
 
 # Copying fake modprobe
@@ -180,6 +172,8 @@ if [ ! -x "${RAMDISK_PATH}/usr/bin/set_key_value" ]; then
 fi
 
 echo "Modify files" >>"${LOG_FILE}"
+# Remove function from scripts
+[ "2" = "${BUILDNUM:0:1}" ] && find "${RAMDISK_PATH}/addons/" -type f -name "*.sh" -exec sed -i 's/function //g' {} \;
 
 # Copying modulelist
 if [ -f "${USER_UP_PATH}/modulelist" ]; then
@@ -189,9 +183,15 @@ else
 fi
 
 # backup current loader configs
+mkdir -p "${RAMDISK_PATH}/usr/arc"
+{
+  echo "LOADERLABEL=\"Arc\""
+  echo "LOADERVERSION=\"${ARC_VERSION}\""
+  echo "LOADERBUILD=\"${ARC_BUILD}\""
+} >"${RAMDISK_PATH}/usr/arc/VERSION"
 BACKUP_PATH="${RAMDISK_PATH}/usr/arc/backup"
 rm -rf "${BACKUP_PATH}"
-for F in "${USER_GRUB_CONFIG}" "${USER_CONFIG_FILE}" "${USER_UP_PATH}" "${HW_KEY}"; do
+for F in "${USER_GRUB_CONFIG}" "${USER_CONFIG_FILE}" "${USER_UP_PATH}"; do
   if [ -f "${F}" ]; then
     FD="$(dirname "${F}")"
     mkdir -p "${FD/\/mnt/${BACKUP_PATH}}"

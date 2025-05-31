@@ -53,8 +53,8 @@ KVER="$(readConfigKey "platforms.${PLATFORM}.productvers.\"${PRODUCTVER}\".kver"
 CPU="$(echo $(cat /proc/cpuinfo 2>/dev/null | grep 'model name' | uniq | awk -F':' '{print $2}'))"
 RAMTOTAL="$(awk '/MemTotal:/ {printf "%.0f\n", $2 / 1024 / 1024 + 0.5}' /proc/meminfo 2>/dev/null)"
 VENDOR="$(dmesg 2>/dev/null | grep -i "DMI:" | head -1 | sed 's/\[.*\] DMI: //i')"
-MACHINE="$(virt-what 2>/dev/null | head -1)"
-[ -z "${MACHINE}" ] && MACHINE="physical" || true
+MEV="$(virt-what 2>/dev/null | head -1)"
+[ -z "${MEV}" ] && MEV="physical"
 DSMINFO="$(readConfigKey "bootscreen.dsminfo" "${USER_CONFIG_FILE}")"
 SYSTEMINFO="$(readConfigKey "bootscreen.systeminfo" "${USER_CONFIG_FILE}")"
 DISKINFO="$(readConfigKey "bootscreen.diskinfo" "${USER_CONFIG_FILE}")"
@@ -97,7 +97,7 @@ if [ "${SYSTEMINFO}" = "true" ]; then
   echo -e "CPU: \033[1;37m${CPU}\033[0m"
   echo -e "Memory: \033[1;37m${RAMTOTAL}GB\033[0m"
   echo -e "Governor: \033[1;37m${GOVERNOR}\033[0m"
-  echo -e "Type: \033[1;37m${MACHINE}\033[0m"
+  echo -e "Type: \033[1;37m${MEV}\033[0m"
   [ "${USBMOUNT}" = "true" ] && echo -e "USB Mount: \033[1;37m${USBMOUNT}\033[0m"
   echo
 fi
@@ -214,7 +214,7 @@ CMDLINE['rootwait']=""
 CMDLINE['panic']="${KERNELPANIC:-0}"
 CMDLINE['pcie_aspm']="off"
 CMDLINE['nowatchdog']=""
-CMDLINE['mev']="${MACHINE}"
+CMDLINE['mev']="${MEV}"
 
 if [ "${MEV}" = "vmware" ]; then
   CMDLINE['tsc']="reliable"
@@ -231,21 +231,23 @@ if [ -n "${GOVERNOR}" ]; then
   CMDLINE['governor']="${GOVERNOR}"
 fi
 
-if [ "${PLATFORM}" = "apollolake" ] || [ "${PLATFORM}" = "geminilake" ] || [ "${PLATFORM}" = "purley" ]; then
+if is_in_array "${PLATFORM}" "${XAPICRL[@]}"; then
   CMDLINE['nox2apic']=""
 fi
 
-if [ "${PLATFORM}" = "apollolake" ] || [ "${PLATFORM}" = "geminilake" ]; then
+if is_in_array "${PLATFORM}" "${IGFXRL[@]}"; then
+  CMDLINE["intel_iommu"]="igfx_off"
+fi
+
+if [ "${PLATFORM}" = "purley" ] || [ "${PLATFORM}" = "broadwellnkv2" ]; then
   CMDLINE['SASmodel']="1"
 fi
 
 CMDLINE['modprobe.blacklist']="${MODBLACKLIST}"
-if [ "${DT}" = "true" ]; then
-  if [ "${PLATFORM}" != "v1000nk" ] && [ "${PLATFORM}" != "epyc7002" ] && [ "${PLATFORM}" != "purley" ] && [ "${PLATFORM}" != "broadwellnkv2" ]; then
-    if ! echo "${CMDLINE['modprobe.blacklist']}" | grep -q "mpt3sas"; then
-      [ -n "${CMDLINE['modprobe.blacklist']}" ] && CMDLINE['modprobe.blacklist']+=","
-      CMDLINE['modprobe.blacklist']+="mpt3sas"
-    fi
+if [ "${DT}" = "true" ] && ! is_in_array "${PLATFORM}" "${MPT3PL[@]}"; then
+  if ! echo "${CMDLINE['modprobe.blacklist']}" | grep -q "mpt3sas"; then
+    [ -n "${CMDLINE['modprobe.blacklist']}" ] && CMDLINE['modprobe.blacklist']+=","
+    CMDLINE['modprobe.blacklist']+="mpt3sas"
   fi
 fi
 

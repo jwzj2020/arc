@@ -10,9 +10,8 @@
 . "${ARC_PATH}/include/modules.sh"
 . "${ARC_PATH}/include/update.sh"
 
-# Get Keymap and Timezone and check System
+# Check System
 onlineCheck
-KEYMAP="$(readConfigKey "keymap" "${USER_CONFIG_FILE}")"
 systemCheck
 readData
 
@@ -21,12 +20,12 @@ readData
 function backtitle() {
   BACKTITLE="${ARC_TITLE}$([ -n "${NEWTAG}" ] && [ -n "${ARC_VERSION}" ] && [ ${ARC_VERSION//[!0-9]/} -lt ${NEWTAG//[!0-9]/} ] && echo " > ${NEWTAG}") | "
   BACKTITLE+="${MODEL:-(Model)} | "
-  BACKTITLE+="${PRODUCTVER:-(Version)} | "
+  BACKTITLE+="${DSMVER:-(Version)} | "
   BACKTITLE+="${IPCON:-(no IP)} | "
   BACKTITLE+="Patch: ${ARC_PATCH} | "
   BACKTITLE+="Config: ${CONFDONE} | "
   BACKTITLE+="Build: ${BUILDDONE} | "
-  BACKTITLE+="${MACHINE}(${BUS}) | "
+  BACKTITLE+="${MEV}(${BUS}) | "
   [ -n "${KEYMAP}" ] && BACKTITLE+="KB: ${KEYMAP}"
   [ "${ARC_OFFLINE}" = "true" ] && BACKTITLE+=" | Offline"
   echo "${BACKTITLE}"
@@ -72,7 +71,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
       fi
     fi
 
-    if [ "${BUILDDONE}" = "true" ]; then
+    if [ "${BUILDDONE}" = "true" ] && [ -f "${MOD_ZIMAGE_FILE}" ] && [ -f "${MOD_RDGZ_FILE}" ]; then
       write_menu "3" "Boot Loader"
     fi
 
@@ -89,7 +88,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
         write_menu "p" "SN/Mac Options"
     
         if [ "${DT}" = "false" ] && [ "${SATACONTROLLER}" -gt 0 ]; then
-          write_menu "S" "Sata PortMap"
+          write_menu "S" "PortMap (Sata Controller)"
         fi
 
         if [ "${DT}" = "true" ]; then
@@ -139,6 +138,8 @@ elif [ "${ARC_MODE}" = "config" ]; then
         write_menu "t" "Change User Password"
         write_menu "J" "Reset Network Config"
         write_menu "T" "Disable all scheduled Tasks"
+        write_menu "r" "Remove Blocked IP Database"
+        write_menu "v" "Force enable SSH"
         write_menu "M" "Mount DSM Storage Pool"
         write_menu "l" "Edit User Config"
         write_menu "s" "Allow Downgrade Version"
@@ -154,6 +155,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
       write_menu "D" "StaticIP for Loader/DSM"
       write_menu "U" "Change Loader Password"
       write_menu "Z" "Change Loader Ports"
+      write_menu "R" "Change Loader ARP Settings"
       write_menu "w" "Reset Loader to Defaults"
       write_menu "L" "Grep Logs from dbgutils"
       write_menu "B" "Grep DSM Config from Backup"
@@ -174,7 +176,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
     [ "${ARC_OFFLINE}" = "false" ] && write_menu "z" "Update Menu"
     write_menu "I" "Power/Service Menu"
     write_menu "V" "Credits"
-    [ "$TERM" != "xterm-256color" ] && WEBCONFIG="Webconfig: http://${IPCON}${HTTPPORT:+:$HTTPPORT}" || WEBCONFIG=""
+    [ "$TERM" != "xterm-256color" ] && WEBCONFIG="Webconfig: http://${IPCON}:${HTTPPORT:-7080}" || WEBCONFIG=""
     dialog --clear --default-item ${NEXT} --backtitle "$(backtitle)" --title "Advanced UI" --colors \
           --cancel-label "Easy UI" --help-button --help-label "Exit" \
           --menu "${WEBCONFIG}" 0 0 0 --file "${TMP_PATH}/menu" \
@@ -255,7 +257,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
           K) KERNEL=$([ "${KERNEL}" = "official" ] && echo 'custom' || echo 'official')
             writeConfigKey "kernel" "${KERNEL}" "${USER_CONFIG_FILE}"
             dialog --backtitle "$(backtitle)" --title "Kernel" \
-              --infobox "Switching Kernel to ${KERNEL}! Stay patient..." 4 50
+              --infobox "Switching Kernel to ${KERNEL}! Stay patient..." 3 50
             if [ "${ODP}" = "true" ]; then
               ODP="false"
               writeConfigKey "odp" "${ODP}" "${USER_CONFIG_FILE}"
@@ -307,6 +309,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
           D) staticIPMenu; NEXT="D" ;;
           Z) loaderPorts; NEXT="Z" ;;
           U) loaderPassword; NEXT="U" ;;
+          R) loaderARP; NEXT="R" ;;
           W) RD_COMPRESSED=$([ "${RD_COMPRESSED}" = "true" ] && echo 'false' || echo 'true')
             writeConfigKey "rd-compressed" "${RD_COMPRESSED}" "${USER_CONFIG_FILE}"
             writeConfigKey "arc.builddone" "false" "${USER_CONFIG_FILE}"
@@ -351,7 +354,7 @@ fi
 # Inform user
 echo -e "Call \033[1;34marc.sh\033[0m to configure Loader"
 echo
-echo -e "Web Config: \033[1;34mhttp://${IPCON}${HTTPPORT:+:$HTTPPORT}\033[0m"
+echo -e "Web Config: \033[1;34mhttp://${IPCON}:${HTTPPORT:-7080}\033[0m"
 echo
 echo -e "SSH Access:"
 echo -e "IP: \033[1;34m${IPCON}\033[0m"
