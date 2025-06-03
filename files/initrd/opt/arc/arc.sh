@@ -140,6 +140,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
         write_menu "T" "Disable all scheduled Tasks"
         write_menu "r" "Remove Blocked IP Database"
         write_menu "v" "Force enable SSH"
+        write_menu "G" "Login Screen Fix"
         write_menu "M" "Mount DSM Storage Pool"
         write_menu "l" "Edit User Config"
         write_menu "s" "Allow Downgrade Version"
@@ -155,7 +156,6 @@ elif [ "${ARC_MODE}" = "config" ]; then
       write_menu "D" "StaticIP for Loader/DSM"
       write_menu "U" "Change Loader Password"
       write_menu "Z" "Change Loader Ports"
-      write_menu "R" "Change Loader ARP Settings"
       write_menu "w" "Reset Loader to Defaults"
       write_menu "L" "Grep Logs from dbgutils"
       write_menu "B" "Grep DSM Config from Backup"
@@ -252,6 +252,7 @@ elif [ "${ARC_MODE}" = "config" ]; then
           t) resetPassword; NEXT="t" ;;
           N) addNewDSMUser; NEXT="N" ;;
           J) resetDSMNetwork; NEXT="J" ;;
+          G) loginScreenFix; NEXT="G" ;;
           M) mountDSM; NEXT="M" ;;
           T) disablescheduledTasks; NEXT="T" ;;
           K) KERNEL=$([ "${KERNEL}" = "official" ] && echo 'custom' || echo 'official')
@@ -309,7 +310,6 @@ elif [ "${ARC_MODE}" = "config" ]; then
           D) staticIPMenu; NEXT="D" ;;
           Z) loaderPorts; NEXT="Z" ;;
           U) loaderPassword; NEXT="U" ;;
-          R) loaderARP; NEXT="R" ;;
           W) RD_COMPRESSED=$([ "${RD_COMPRESSED}" = "true" ] && echo 'false' || echo 'true')
             writeConfigKey "rd-compressed" "${RD_COMPRESSED}" "${USER_CONFIG_FILE}"
             writeConfigKey "arc.builddone" "false" "${USER_CONFIG_FILE}"
